@@ -5,11 +5,13 @@ on:
   push:
     branches: [main]
     paths:
+      - ".github/workflows/**"
       - "src/**"
       - "Dockerfile"
       - "infra/**"
       - "package.json"
       - "package-lock.json"
+      - "README.md"
 
 permissions:
   id-token: write
