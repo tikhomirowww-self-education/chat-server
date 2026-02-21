@@ -2,8 +2,21 @@ name: Deploy Server
 
 on:
   workflow_dispatch:
+    inputs:
+      target_environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        default: prod
+        options:
+          - dev
+          - staging
+          - prod
   push:
-    branches: [main]
+    branches:
+      - main
+      - develop
+      - feature/**
     paths:
       - ".github/workflows/**"
       - "src/**"
@@ -19,11 +32,16 @@ permissions:
 
 jobs:
   deploy:
+    name: Build and Deploy Server
     runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.target_environment || (github.ref_name == 'main' && 'prod' || github.ref_name == 'develop' && 'staging' || 'dev') }}
+    concurrency:
+      group: server-${{ github.event_name == 'workflow_dispatch' && inputs.target_environment || (github.ref_name == 'main' && 'prod' || github.ref_name == 'develop' && 'staging' || 'dev') }}
+      cancel-in-progress: false
     env:
       AWS_REGION: eu-central-1
       ECR_REPOSITORY: chat-backend
-      IMAGE_TAG: prod-${{ github.sha }}
+      IMAGE_TAG: ${{ github.ref_name == 'main' && format('prod-{0}', github.sha) || github.ref_name == 'develop' && format('staging-{0}', github.sha) || format('dev-{0}', github.sha) }}
       PARAMETER_PREFIX: /chatapp
       COGNITO_ISSUER_URL: ${{ secrets.COGNITO_ISSUER_URL }}
       COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
@@ -32,9 +50,9 @@ jobs:
       DYNAMODB_REGION: eu-central-1
       DYNAMODB_TABLE: ${{ vars.DYNAMODB_TABLE }}
       DYNAMODB_USER_ROOMS_GSI: GSI1
-      COGNITO_REDIRECT_URI: https://aws-test-project.site/api/auth/callback
-      POST_LOGOUT_REDIRECT: https://aws-test-project.site
-      CORS_ORIGIN: https://aws-test-project.site
+      COGNITO_REDIRECT_URI: https://${{ vars.APP_DOMAIN }}/api/auth/callback
+      POST_LOGOUT_REDIRECT: https://${{ vars.APP_DOMAIN }}
+      CORS_ORIGIN: https://${{ vars.APP_DOMAIN }}
       ALB_REDIRECT_HTTP_TO_HTTPS: "false"
 
     steps:
