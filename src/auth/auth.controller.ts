@@ -76,7 +76,7 @@ export class AuthController {
     };
   }
 
-  @Patch('profile')
+  @Patch('profilee')
   @UseGuards(SessionAuthGuard)
   async updateProfile(
     @Req() req: Request,
