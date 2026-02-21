@@ -1,0 +1,67 @@
+name: Deploy Server
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "Dockerfile"
+      - "infra/**"
+      - "package.json"
+      - "package-lock.json"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: eu-central-1
+      ECR_REPOSITORY: chat-backend
+      IMAGE_TAG: prod-${{ github.sha }}
+      PARAMETER_PREFIX: /chatapp
+      COGNITO_ISSUER_URL: ${{ secrets.COGNITO_ISSUER_URL }}
+      COGNITO_CLIENT_ID: ${{ secrets.COGNITO_CLIENT_ID }}
+      COGNITO_CLIENT_SECRET: ${{ secrets.COGNITO_CLIENT_SECRET }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      DYNAMODB_REGION: eu-central-1
+      DYNAMODB_TABLE: ${{ vars.DYNAMODB_TABLE }}
+      DYNAMODB_USER_ROOMS_GSI: GSI1
+      COGNITO_REDIRECT_URI: https://aws-test-project.site/api/auth/callback
+      POST_LOGOUT_REDIRECT: https://aws-test-project.site
+      CORS_ORIGIN: https://aws-test-project.site
+      ALB_REDIRECT_HTTP_TO_HTTPS: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: login-ecr
+
+      - name: Build and push image
+        run: |
+          docker buildx create --use --name builder
+          docker buildx build \
+            --platform linux/amd64 \
+            -t "${{ steps.login-ecr.outputs.registry }}/${ECR_REPOSITORY}:${IMAGE_TAG}" \
+            --push .
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+
+      - name: Deploy CDK
+        working-directory: infra
+        run: |
+          npm ci
+          npx cdk deploy ChatServerStack --require-approval never
