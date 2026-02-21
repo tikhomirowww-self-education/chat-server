@@ -50,9 +50,6 @@ jobs:
       DYNAMODB_REGION: eu-central-1
       DYNAMODB_TABLE: ${{ vars.DYNAMODB_TABLE }}
       DYNAMODB_USER_ROOMS_GSI: GSI1
-      COGNITO_REDIRECT_URI: https://${{ vars.APP_DOMAIN }}/api/auth/callback
-      POST_LOGOUT_REDIRECT: https://${{ vars.APP_DOMAIN }}
-      CORS_ORIGIN: https://${{ vars.APP_DOMAIN }}
       ALB_REDIRECT_HTTP_TO_HTTPS: "false"
 
     steps:
