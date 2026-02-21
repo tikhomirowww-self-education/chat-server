@@ -55,6 +55,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate required configuration
+        run: |
+          set -euo pipefail
+          test -n "${COGNITO_ISSUER_URL}" || (echo "COGNITO_ISSUER_URL is missing" && exit 1)
+          test -n "${COGNITO_CLIENT_ID}" || (echo "COGNITO_CLIENT_ID is missing" && exit 1)
+          test -n "${COGNITO_CLIENT_SECRET}" || (echo "COGNITO_CLIENT_SECRET is missing" && exit 1)
+          test -n "${SESSION_SECRET}" || (echo "SESSION_SECRET is missing" && exit 1)
+          test -n "${DYNAMODB_TABLE}" || (echo "DYNAMODB_TABLE is missing" && exit 1)
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
@@ -65,7 +74,8 @@ jobs:
 
       - name: Build and push image
         run: |
-          docker buildx create --use --name builder
+          set -euo pipefail
+          docker buildx create --use --name builder || true
           docker buildx build \
             --platform linux/amd64 \
             -t "${{ steps.login-ecr.outputs.registry }}/${ECR_REPOSITORY}:${IMAGE_TAG}" \
@@ -80,5 +90,24 @@ jobs:
       - name: Deploy CDK
         working-directory: infra
         run: |
+          set -euo pipefail
           npm ci
           npx cdk deploy ChatServerStack --require-approval never
+
+      - name: Smoke check API through CloudFront domain
+        run: |
+          set -euo pipefail
+          APP_DOMAIN=$(aws ssm get-parameter --region "$AWS_REGION" --name "$PARAMETER_PREFIX/shared/app-domain" --query 'Parameter.Value' --output text)
+          echo "Checking https://$APP_DOMAIN/api/auth/profile"
+          for i in $(seq 1 30); do
+            CODE=$(curl -s -o /tmp/profile.out -w '%{http_code}' "https://$APP_DOMAIN/api/auth/profile" || true)
+            if [ "$CODE" = "200" ]; then
+              echo "API is healthy"
+              exit 0
+            fi
+            echo "Attempt $i/30 failed with status $CODE"
+            sleep 10
+          done
+          echo "API did not become healthy in time"
+          cat /tmp/profile.out || true
+          exit 1
